@@ -3,9 +3,9 @@ const fsp = require('fs/promises');
 const { log } = require('../../lib/utils');
 const StableDatabaseReader = require('../io/StableDatabaseReader');
 
-class StableGameDatabase {
+module.exports = class StableGameDatabase {
     /**
-     * **Please use `StableGameDatabase.open()` instead of this constructor.**
+     * Please use `StableGameDatabase.open()` instead of this constructor.
      */
     constructor(filePath) {
         if (!fs.existsSync(filePath)) {
@@ -222,6 +222,4 @@ class StableGameDatabase {
         obj.beatmaps = await this.getBeatmaps();
         return obj;
     }
-}
-
-module.exports = StableGameDatabase;
+};

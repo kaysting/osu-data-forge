@@ -3,7 +3,7 @@
  *
  * Perform random access or sequential reads on a file, caching contents in a buffer for quick reading without ever loading the entire file into memory.
  */
-class BufferedReader {
+module.exports = class BufferedReader {
     constructor(fileHandle, bufferSize = 64 * 1024) {
         this.fileHandle = fileHandle;
         this.bufferSize = bufferSize;
@@ -76,6 +76,4 @@ class BufferedReader {
 
         return this.buffer.subarray(0, availableLength);
     }
-}
-
-module.exports = BufferedReader;
+};

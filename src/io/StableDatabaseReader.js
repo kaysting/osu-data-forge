@@ -1,8 +1,7 @@
 const BufferedReader = require('./BufferedReader');
 const ticksToDate = require('ticks-to-date');
-const { log } = require('../../lib/utils');
 
-class StableDatabaseReader extends BufferedReader {
+module.exports = class StableDatabaseReader extends BufferedReader {
     constructor(fileHandle, bufferSize) {
         super(fileHandle, bufferSize);
     }
@@ -120,6 +119,4 @@ class StableDatabaseReader extends BufferedReader {
         if (ticks === 0n) return null;
         return ticksToDate(Number(ticks));
     }
-}
-
-module.exports = StableDatabaseReader;
+};
