@@ -2,10 +2,10 @@ const fs = require('fs');
 const api = require('./src');
 
 process.env.ODBM_VERBOSE = true;
-const stableOsuPath = './.samples/noemi-osu!.db';
+const stableOsuPath = './.samples/valerus-osu!.db';
 const stableCollectionsPath = './.samples/nikku-collection.db';
 
-const tests = [
+require('./lib/tester')([
     // Stable osu!.db tests
     {
         name: 'Open osu!.db',
@@ -71,13 +71,13 @@ const tests = [
         f: async db => {
             const newPath = './test-collections.db';
             await db.writeChanges(newPath);
+            db.close();
 
             const newDb = await api.StableCollectionsDatabase.open(newPath);
             const collection = newDb.getCollectionByName('meow meow meow');
             if (!collection) throw new Error(`New collection not found :(`);
+            newDb.close();
             fs.rmSync(newPath);
         }
     }
-];
-
-require('./lib/tester')(tests);
+]);
