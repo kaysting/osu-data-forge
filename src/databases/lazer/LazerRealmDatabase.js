@@ -30,15 +30,7 @@ module.exports = class LazerRealmDatabase {
         this.close();
     }
 
-    /**
-     * Get installed maps, optionally paginated.
-     * @param {number} limit Get this many maps.
-     * @param {number} offset Skip this many maps.
-     * @returns {Promise<Beatmap[]>}
-     */
-    async getBeatmaps(limit = Infinity, offset = 0) {
-        const mapObjects = this.db.realm.objects('Beatmap');
-        const mapsSliced = mapObjects.slice(offset, offset + limit);
+    #getBeatmapObject(RealmBeatmap) {
         const lazerStatuses = {
             '-3': 'unknown',
             '-2': 'graveyard',
@@ -49,15 +41,45 @@ module.exports = class LazerRealmDatabase {
             3: 'qualified',
             4: 'loved'
         };
-        return mapsSliced.map(m => {
-            m.rankedStatusString = lazerStatuses[m.Status] || 'unknown';
-            return new Beatmap(m);
-        });
+        const entry = Object.create(RealmBeatmap);
+        entry.rankedStatusString = lazerStatuses[entry.Status] || 'unknown';
+        return new Beatmap(entry);
     }
 
-    async getBeatmapByHash(beatmapHash) {}
+    /**
+     * Get installed maps, optionally paginated.
+     * @param {number} limit Get this many maps.
+     * @param {number} offset Skip this many maps.
+     * @returns {Promise<Beatmap[]>}
+     */
+    async getBeatmaps(limit = Infinity, offset = 0) {
+        const mapObjects = this.db.realm.objects('Beatmap');
+        const mapsSliced = mapObjects.slice(offset, offset + limit);
+        return mapsSliced.map(m => this.#getBeatmapObject(m));
+    }
 
-    async getBeatmapById(id) {}
+    /**
+     * Get a beatmap from the database by its MD5 hash.
+     * @param {string} beatmapHash Beatmap hash.
+     * @returns {Promise<Beatmap|null>}
+     */
+    async getBeatmapByHash(beatmapHash) {
+        const result = this.db.realm.objects('Beatmap').filtered('MD5Hash == $0', beatmapHash)[0];
+        if (!result) return null;
+        return this.#getBeatmapObject(result);
+    }
+
+    /**
+     * Get a beatmap by its online ID. Note that all unsubmitted maps have an ID of 0.
+     * @param {number} id Online beatmap ID.
+     * @returns {Promise<Beatmap|null>}
+     */
+    async getBeatmapById(id) {
+        if (id === 0) return null;
+        const result = this.db.realm.objects('Beatmap').filtered('OnlineID == $0', id)[0];
+        if (!result) return null;
+        return this.#getBeatmapObject(result);
+    }
 
     async getCollections(limit = Infinity, offset = 0) {}
 
