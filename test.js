@@ -5,6 +5,7 @@ process.env.ODBM_VERBOSE = true;
 const stableOsuPath = './.samples/valerus-osu!.db';
 const stableCollectionsPath = './.samples/nikku-collection.db';
 const stableScoresPath = './.samples/kuba-scores.db';
+const lazerRealmPath = './.samples/meru-client.realm';
 
 require('./lib/tester')([
     // Stable osu!.db tests
@@ -18,12 +19,15 @@ require('./lib/tester')([
     {
         name: 'Read paginated map list from osu!.db',
         requires: ['Open osu!.db'],
+        /** @param {api.StableGameDatabase} db */
         f: async db => {
             const count = 20;
             const maps = await db.getBeatmaps(count, 0);
-            if (!maps || maps.length !== count) {
+            if (maps.length !== count) {
                 throw new Error(`No maps or invalid amount of maps returned.`);
             }
+            if (!maps[0].hash) throw new Error(`Invalid map returned!`);
+            console.log(maps[0]);
             db.close();
         }
     },
@@ -53,6 +57,7 @@ require('./lib/tester')([
             const index = 4;
             const collection = db.collections[index];
             if (!collection) throw new Error(`Collection at index ${index} doesn't exist`);
+            if (!collection.name) throw new Error(`Invalid collection returned!`);
             return db;
         }
     },
@@ -95,8 +100,39 @@ require('./lib/tester')([
         f: async db => {
             const hash = db.getBeatmapHashes(1)[0];
             const scores = await db.getBeatmapScores(hash);
+            if (scores.length < 1) throw new Error(`No scores returned!`);
+            if (!scores[0].beatmapHash) throw new Error(`Invalid score returned`);
+            return db;
+        }
+    },
+    {
+        name: 'Read paginated scores sequentially from scores.db',
+        requires: ['Open scores.db'],
+        /** @param {api.StableScoresDatabase} db */
+        f: async db => {
+            const scores = await db.getScores(10, 10);
+            if (scores.length !== 10) throw new Error(`Got wrong number of scores`);
+            if (!scores[0].beatmapHash) throw new Error(`Invalid score returned`);
 
             db.close();
+        }
+    },
+    {
+        name: 'Open lazer realm db',
+        f: async () => {
+            const db = await api.LazerRealmDatabase.open(lazerRealmPath);
+            const schema = db.db.getSchema();
+            fs.writeFileSync('.lazer-schema.json', JSON.stringify(schema, null, 2));
+            return db;
+        }
+    },
+    {
+        name: 'Read maps from lazer realm',
+        requires: ['Open lazer realm db'],
+        /** @param {api.LazerRealmDatabase} db */
+        f: async db => {
+            const maps = await db.getBeatmaps(1, 50);
+            console.log(maps);
         }
     }
 ]);

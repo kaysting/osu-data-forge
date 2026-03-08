@@ -14,12 +14,21 @@ module.exports = class StableCollectionsDatabase {
         if (!fs.existsSync(filePath)) {
             throw new Error(`File doesn't exist: ${filePath}`);
         }
+        /** Database file path. */
         this.filePath = filePath;
+        /** Data extracted directly from the database. */
         this.data = {
+            /** Database version. */
             version: 0,
+            /** The number of collections in the database */
             countCollections: 0
         };
+        /** An array of `Collection`s
+         * @type {Collection[]} */
         this.collections = [];
+        /** An open handle on the database file, used for reading. */
+        this.fileHandle = null;
+
         log(`Initialized StableCollectionsDatabase at ${filePath}`);
     }
 

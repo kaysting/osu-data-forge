@@ -2,9 +2,11 @@ const fs = require('fs');
 const fsp = require('fs/promises');
 const { log } = require('../../../lib/utils');
 const StableDatabaseReader = require('../../io/StableDatabaseReader');
+const Beatmap = require('../../objects/Beatmap');
+const { mapTo } = require('realm');
 
 module.exports = class StableGameDatabase {
-    #beatmapIndex;
+    #beatmapIndex = [];
 
     /**
      * Please use `StableGameDatabase.open()` instead of this constructor.
@@ -13,11 +15,18 @@ module.exports = class StableGameDatabase {
         if (!fs.existsSync(filePath)) {
             throw new Error(`File doesn't exist: ${filePath}`);
         }
+
+        /** The database file path. */
         this.filePath = filePath;
+        /** Data directly extracted from the database. */
         this.data = {};
+        /** A set of submitted beatmap IDs. */
         this.beatmapIds = new Set();
+        /** A set of submitted beatmapset IDs. */
         this.beatmapsetIds = new Set();
-        this.#beatmapIndex = [];
+        /** A handle opened on the database file, used for reading data. */
+        this.fileHandle = null;
+
         log(`Initialized StableGameDatabase at ${filePath}`);
     }
 
@@ -48,11 +57,17 @@ module.exports = class StableGameDatabase {
         // reading the whole file
         const reader = this.#getReader(0, 1024 * 1024 * 10);
 
+        /** Database version. */
         this.data.version = await reader.readInt();
+        /** The number of folders osu knows about. */
         this.data.folderCount = await reader.readInt();
+        /** Is the active user's account unlocked? */
         this.data.isAccountUnlocked = await reader.readBoolean();
+        /** Date the active user's account will be unlocked if it's locked. */
         this.data.dateUnlocked = await reader.readDateTime();
+        /** Player name. */
         this.data.playerName = await reader.readString();
+        /** The number of installed beatmaps. */
         this.data.beatmapCount = await reader.readInt();
 
         for (let i = 0; i < this.data.beatmapCount; i++) {
@@ -60,11 +75,11 @@ module.exports = class StableGameDatabase {
             const beatmap = await this.#readBeatmap(reader);
             this.#beatmapIndex.push({
                 offset,
-                md5: beatmap.md5,
-                beatmapId: beatmap.beatmapId
+                md5: beatmap.hash,
+                beatmapId: beatmap.id
             });
-            this.beatmapIds.add(beatmap.beatmapId);
-            this.beatmapsetIds.add(beatmap.beatmapsetId);
+            this.beatmapIds.add(beatmap.id);
+            this.beatmapsetIds.add(beatmap.beatmapset.id);
         }
 
         this.data.userPermissions = await reader.readInt();
@@ -95,11 +110,23 @@ module.exports = class StableGameDatabase {
 
         map.rankedStatus = await reader.readByte();
 
+        const statuses = {
+            0: 'unknown',
+            1: 'unsubmitted',
+            2: 'graveyard',
+            3: 'unknown',
+            4: 'ranked',
+            5: 'approved',
+            6: 'qualified',
+            7: 'loved'
+        };
+        map.rankedStatusString = statuses[map.rankedStatus];
+
         map.countCircles = await reader.readShort();
         map.countSliders = await reader.readShort();
         map.countSpinners = await reader.readShort();
 
-        map.lastModified = await reader.readDateTime();
+        map.dateLastModified = await reader.readDateTime();
 
         if (this.data.version < 20140609) {
             map.ar = await reader.readByte();
@@ -146,16 +173,27 @@ module.exports = class StableGameDatabase {
 
         map.beatmapId = await reader.readInt();
         map.beatmapsetId = await reader.readInt();
+        if (map.beatmapsetId === 4294967295) map.beatmapsetId = -1;
         map.threadId = await reader.readInt();
 
-        map.grade = {};
+        map.grades = {};
         for (const mode of ['osu', 'taiko', 'catch', 'mania']) {
-            map.grade[mode] = await reader.readByte();
+            map.grades[mode] = await reader.readByte();
         }
 
         map.localOffset = await reader.readShort();
         map.stackLeniency = await reader.readSingle();
         map.mode = await reader.readByte();
+
+        const modes = {
+            0: 'osu',
+            1: 'taiko',
+            2: 'catch',
+            3: 'mania'
+        };
+        map.modeString = modes[map.mode];
+
+        map.starRating = map.starRatings[map.modeString]?.find(e => e.mod === 0)?.stars;
 
         map.source = await reader.readString();
         map.tags = await reader.readString();
@@ -184,7 +222,7 @@ module.exports = class StableGameDatabase {
 
         map.maniaScrollSpeed = await reader.readByte();
 
-        return map;
+        return new Beatmap(map);
     }
 
     async #readBeatmapAtOffset(offset) {
@@ -196,30 +234,30 @@ module.exports = class StableGameDatabase {
     /**
      * Get a beatmap entry by its md5 hash.
      * @param {string} md5 Beatmap hash.
-     * @returns Beatmap data.
+     * @returns {Promise<Beatmap>}
      */
     async getBeatmapByHash(md5) {
         const entry = this.#beatmapIndex.find(e => e.md5 == md5);
         if (!entry) return null;
-        return this.#readBeatmapAtOffset(entry.offset);
+        return await this.#readBeatmapAtOffset(entry.offset);
     }
 
     /**
      * Get a beatmap by its online ID. Note that all unsubmitted maps have an ID of 0.
      * @param {number} id Online beatmap ID.
-     * @returns Beatmap data.
+     * @returns {Promise<Beatmap>}
      */
     async getBeatmapById(id) {
         const entry = this.#beatmapIndex.find(e => e.beatmapId == id);
         if (!entry) return null;
-        return this.#readBeatmapAtOffset(entry.offset);
+        return await this.#readBeatmapAtOffset(entry.offset);
     }
 
     /**
      * Get beatmaps in bulk, optionally with pagination.
      * @param {number} limit Get this many results.
      * @param {number} offset Skip this many results.
-     * @returns Array of beatmaps.
+     * @returns {Promise<Beatmap[]>}
      */
     async getBeatmaps(limit = 0, offset = 0) {
         limit = limit || this.data.beatmapCount - offset;

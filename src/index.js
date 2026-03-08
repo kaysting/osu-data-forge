@@ -12,9 +12,11 @@
 const StableGameDatabase = require('./databases/stable/StableGameDatabase');
 const StableCollectionsDatabase = require('./databases/stable/StableCollectionsDatabase');
 const StableScoresDatabase = require('./databases/stable/StableScoresDatabase');
+const LazerRealmDatabase = require('./databases/lazer/LazerRealmDatabase');
 
 module.exports = {
     StableGameDatabase,
     StableCollectionsDatabase,
-    StableScoresDatabase
+    StableScoresDatabase,
+    LazerRealmDatabase
 };

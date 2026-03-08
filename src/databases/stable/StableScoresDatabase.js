@@ -2,6 +2,8 @@ const fs = require('fs');
 const fsp = require('fs/promises');
 const StableDatabaseReader = require('../../io/StableDatabaseReader');
 const { log } = require('../../../lib/utils');
+const Score = require('../../objects/Score');
+const ModList = require('../../objects/ModList');
 
 module.exports = class StableScoresDatabase {
     #beatmapIndex = {};
@@ -19,7 +21,7 @@ module.exports = class StableScoresDatabase {
     }
 
     /**
-     * Open an osu!standard `collections.db` database, indexing it in memory to speed up queries. This may take several seconds for large databases.
+     * Open an osu!standard `scores.db` database for reading, indexing it in memory to speed up queries. This may take several seconds for large databases.
      * @param {string} filePath Your database file path.
      */
     static async open(filePath) {
@@ -63,6 +65,18 @@ module.exports = class StableScoresDatabase {
         score.isFullCombo = await reader.readBoolean();
         score.mods = await reader.readInt();
 
+        // Get mod abbreviations
+        score.modStrings = ModList.fromStableBitMask(score.mods);
+
+        // Get mode string
+        const modes = {
+            0: 'osu',
+            1: 'taiko',
+            2: 'catch',
+            3: 'mania'
+        };
+        score.modeString = modes[score.mode];
+
         let temp = await reader.readString();
         if (temp !== '') {
             throw new Error(
@@ -79,15 +93,13 @@ module.exports = class StableScoresDatabase {
             );
         }
 
-        score.onlineScoreId = await reader.readLong();
+        score.onlineScoreId = Number(await reader.readLong());
 
-        // Check if the Target Practice bit (8388608) is flipped on
-        const TARGET_PRACTICE_FLAG = 8388608;
-        if ((score.mods & TARGET_PRACTICE_FLAG) !== 0) {
+        if (score.modStrings.includes('TargetPractice')) {
             score.targetPracticeTotalAccuracy = await reader.readDouble();
         }
 
-        return score;
+        return new Score(score);
     }
 
     async #index() {
@@ -133,6 +145,11 @@ module.exports = class StableScoresDatabase {
         return Object.keys(this.#beatmapIndex).slice(offset, offset + limit);
     }
 
+    /**
+     * Get all scores set on a beatmap.
+     * @param {string} beatmapHash The md5 hash of the beatmap to get scores for.
+     * @returns {Promise<Score[]>}
+     */
     async getBeatmapScores(beatmapHash) {
         // Get entry
         const entry = this.#beatmapIndex[beatmapHash];
@@ -149,6 +166,58 @@ module.exports = class StableScoresDatabase {
         }
         log(`Read data for ${scores.length} scores on map ${entry.md5}`);
 
+        return scores;
+    }
+
+    /**
+     * Get scores sequentially, optionally with pagination.
+     * @param {number} limit Get this many scores.
+     * @param {number} offset Skip this many scores.
+     * @returns {Promise<Score[]>}
+     */
+    async getScores(limit = Infinity, offset = 0) {
+        // Get beatmap hashes since we index by them
+        const hashes = Object.keys(this.#beatmapIndex);
+
+        // Get reader
+        const reader = this.#getReader();
+
+        // Loop for each beatmap hash to collect scores
+        const scores = [];
+        let countSkipped = 0;
+        for (const hash of hashes) {
+            // Break if we have enough scores
+            if (scores.length >= limit) break;
+
+            // Skip to the next map if we haven't reached our offset yet
+            // and this map doesn't have enough scores to hit it
+            const entry = this.#beatmapIndex[hash];
+            if (countSkipped + entry.countScores < offset) {
+                countSkipped += entry.countScores;
+                continue;
+            }
+
+            // Seek to the scores offset and loop for each score on this map
+            reader.seek(entry.offsetScores);
+            for (let i = 0; i < entry.countScores; i++) {
+                // Read the score to update the reader offset
+                const score = await this.#readScore(reader);
+
+                // Skip maps until we reach our offset
+                if (countSkipped < offset) {
+                    countSkipped++;
+                    continue;
+                }
+
+                // Save the score
+                scores.push(score);
+
+                // Stop if we have enough scores
+                if (scores.length >= limit) break;
+            }
+        }
+
+        log(`Read ${scores.length} scores`);
         return scores;
     }
 };

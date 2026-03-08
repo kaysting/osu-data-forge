@@ -4,7 +4,7 @@
 
 A Node.js library that unifies reading and writing osu! stable and lazer databases with a single API.
 
-- Read active user info like username
+- Read active user info
 - Read installed beatmaps
 - Read local scores
 - Read and edit collections

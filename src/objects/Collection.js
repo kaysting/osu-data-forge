@@ -17,6 +17,7 @@ module.exports = class Collection {
         this.#beatmapHashesSet = new Set(entry.beatmapHashes);
     }
 
+    /** The name of the collection. */
     get name() {
         return this.#name;
     }
@@ -59,5 +60,15 @@ module.exports = class Collection {
     removeMap(beatmapHash) {
         this.#beatmapHashesSet.delete(beatmapHash);
         return this;
+    }
+
+    /**
+     * Get the collection as a normal JSON object.
+     */
+    toJSON() {
+        return {
+            name: this.name,
+            beatmapHashes: Array.from(this.#beatmapHashesSet)
+        };
     }
 };

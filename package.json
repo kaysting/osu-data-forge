@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "cli-color": "^2.0.4",
+    "realm": "^20.2.0",
     "ticks-to-date": "^1.0.6"
   }
 }
